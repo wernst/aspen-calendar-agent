@@ -1,0 +1,13 @@
+{
+  "name": "calendar-agent",
+  "version": "0.0.0",
+  "main": "deploy/calendar-agent.bundle.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "esbuild index.ts --bundle --format=iife --global-name=agent --minify --outfile=./deploy/calendar-agent.bundle.js"
+  },
+  "devDependencies": {
+    "@aspen.cloud/agent-typings": "^0.1.9",
+    "esbuild": "^0.13.6"
+  }
+}

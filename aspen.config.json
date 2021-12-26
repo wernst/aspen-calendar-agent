@@ -1,0 +1,7 @@
+{
+  "pathToDeploy": "./deploy",
+  "name": "calendar-agent",
+  "type": "agent",
+  "title": "calendar",
+  "description": "A simple event manager"
+}
