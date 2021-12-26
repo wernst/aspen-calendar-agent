@@ -9,5 +9,9 @@
   "devDependencies": {
     "@aspen.cloud/agent-typings": "^0.1.9",
     "esbuild": "^0.13.6"
+  },
+  "dependencies": {
+    "date-fns": "^2.27.0",
+    "rrule": "^2.6.8"
   }
 }

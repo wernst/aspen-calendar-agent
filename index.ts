@@ -1,4 +1,13 @@
 import { Agent, Log } from "@aspen.cloud/agent-typings";
+import {
+  addDays,
+  addMinutes,
+  addMonths,
+  addYears,
+  isAfter,
+  isBefore,
+} from "date-fns";
+import { rrulestr } from "rrule";
 
 enum Operations {
   SET_EVENT = "SET_EVENT",
@@ -9,8 +18,11 @@ interface CalendarEvent {
   id: string;
   title: string;
   description: string;
-  dateUtc: string;
+  startDateUtc: string;
+  endDateUtc: string;
   duration: number; // minutes
+  isRecurring: boolean;
+  recurrencePattern: string;
   // allDay: boolean,
   // participants: User[]
 }
@@ -19,41 +31,52 @@ interface SetEventParams {
   id?: string;
   title: string;
   description: string;
-  dateUtc: string;
+  startDateUtc: string;
+  endDateUtc: string;
   duration: string; // minutes
+  isRecurring: boolean;
+  recurrencePattern: string;
 }
 
 const NOTIFICATION_OFFSET = 30;
 
-function getEventsByYearFilter(year: string) {
+function eventRangeFilter(startDateUtc: string, endDateUtc: string) {
+  const rangeStart = new Date(startDateUtc);
+  const rangeEnd = new Date(endDateUtc);
   return (event: CalendarEvent) => {
-    const parsedDate = new Date(event.dateUtc);
-    return parsedDate.getFullYear().toString() === year;
+    const eventStart = new Date(event.startDateUtc);
+    const eventEnd = new Date(event.endDateUtc);
+    return isBefore(rangeStart, eventEnd) && isAfter(rangeEnd, eventStart);
   };
 }
 
-function getEventsByYearMonthFilter(year: string, month: string) {
-  return (event: CalendarEvent) => {
-    const parsedDate = new Date(event.dateUtc);
-    return (
-      getEventsByYearFilter(year)(event) &&
-      parsedDate.getMonth().toString() === month
-    );
-  };
-}
-
-function getEventsByYearMonthDayFilter(
-  year: string,
-  month: string,
-  day: string
+function generateRecurringEvents(
+  event: CalendarEvent,
+  startDateUtc: string,
+  endDateUtc: string
 ) {
-  return (event: CalendarEvent) => {
-    const parsedDate = new Date(event.dateUtc);
-    return (
-      getEventsByYearMonthFilter(year, month)(event) &&
-      parsedDate.getDate().toString() === day
+  const rule = rrulestr(event.recurrencePattern);
+  const dates = rule.between(new Date(startDateUtc), new Date(endDateUtc));
+  return dates.map<CalendarEvent>((date) => ({
+    ...event,
+    startDateUtc: date.toISOString(),
+    endDateUtc: addMinutes(date, event.duration).toISOString(),
+  }));
+}
+
+function parseEvents(
+  events: CalendarEvent[],
+  startDateUtc: string,
+  endDateUtc: string
+) {
+  const nonRecurring = events.filter((e) => !e.isRecurring);
+  const recurring = events
+    .filter((e) => e.isRecurring)
+    .flatMap((event) =>
+      generateRecurringEvents(event, startDateUtc, endDateUtc)
     );
-  };
+
+  return [...nonRecurring, ...recurring];
 }
 
 const agent: Agent = {
@@ -87,42 +110,84 @@ const agent: Agent = {
       aspen
     ) => {
       const { year, month, day } = params;
-      const events = await aspen.getAggregation("events", {
+      const events = (await aspen.getAggregation("events", {
         range: "continuous",
-      });
-      return Object.values(events).filter(
-        getEventsByYearMonthDayFilter(year, month, day)
+      })) as Record<string, CalendarEvent>;
+
+      const startDate = new Date(Number(year), Number(month), Number(day));
+      const startDateUtc = startDate.toISOString();
+      const endDate = addDays(startDate, 1);
+      const endDateUtc = endDate.toISOString();
+      const eventsInRange = Object.values(events).filter(
+        eventRangeFilter(startDateUtc, endDateUtc)
       );
+      return parseEvents(eventsInRange, startDateUtc, endDateUtc);
     },
     eventsForMonth: async (params: { year: string; month: string }, aspen) => {
       const { year, month } = params;
-      const events = await aspen.getAggregation("events", {
+      const events = (await aspen.getAggregation("events", {
         range: "continuous",
-      });
-      return Object.values(events).filter(
-        getEventsByYearMonthFilter(year, month)
+      })) as Record<string, CalendarEvent>;
+
+      const startDate = new Date(Number(year), Number(month));
+      const startDateUtc = startDate.toISOString();
+      const endDate = addMonths(startDate, 1);
+      const endDateUtc = endDate.toISOString();
+      const eventsInRange = Object.values(events).filter(
+        eventRangeFilter(startDateUtc, endDateUtc)
       );
+      return parseEvents(eventsInRange, startDateUtc, endDateUtc);
     },
     eventsForYear: async (params: { year: string }, aspen) => {
       const { year } = params;
-      const events = await aspen.getAggregation("events", {
+      const events = (await aspen.getAggregation("events", {
         range: "continuous",
-      });
-      return Object.values(events).filter(getEventsByYearFilter(year));
+      })) as Record<string, CalendarEvent>;
+      const startDate = new Date(Number(year));
+      const startDateUtc = startDate.toISOString();
+      const endDate = addYears(startDate, 1);
+      const endDateUtc = endDate.toISOString();
+      const eventsInRange = Object.values(events).filter(
+        eventRangeFilter(startDateUtc, endDateUtc)
+      );
+      return parseEvents(eventsInRange, startDateUtc, endDateUtc);
+    },
+    eventsInRange: async (
+      params: { startDateUtc: string; endDateUtc: string },
+      aspen
+    ) => {
+      const { startDateUtc, endDateUtc } = params;
+      const events = (await aspen.getAggregation("events", {
+        range: "continuous",
+      })) as Record<string, CalendarEvent>;
+      return Object.values(events).filter(
+        eventRangeFilter(startDateUtc, endDateUtc)
+      );
     },
   },
   actions: {
     setEvent: async (params: SetEventParams, aspen) => {
-      const { title, description, dateUtc, duration, id } = params;
-      const parsedDate = new Date(dateUtc);
+      const {
+        title,
+        description,
+        startDateUtc,
+        endDateUtc,
+        duration,
+        id,
+        isRecurring,
+        recurrencePattern,
+      } = params;
       const rid = id ?? (await aspen.createResource());
       const event = {
         title,
         description,
-        dateUtc: parsedDate,
-        duration,
+        startDateUtc,
+        endDateUtc,
+        duration: Number(duration),
         id: rid,
-      };
+        isRecurring,
+        recurrencePattern,
+      } as CalendarEvent;
       await aspen.pushEvent(
         Operations.SET_EVENT,
         { event },
@@ -130,8 +195,9 @@ const agent: Agent = {
           resourceId: rid,
         }
       );
+      const startDate = new Date(startDateUtc);
       const notifyDate = new Date(
-        parsedDate.getTime() - NOTIFICATION_OFFSET * 60 * 1000
+        startDate.getTime() - NOTIFICATION_OFFSET * 60 * 1000
       );
       aspen.scheduleAction("notify", event, notifyDate, {
         jobKey: `reminder_${rid}`,
