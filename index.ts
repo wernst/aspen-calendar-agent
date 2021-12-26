@@ -9,7 +9,7 @@ interface CalendarEvent {
   id: string;
   title: string;
   description: string;
-  date: string;
+  dateUtc: string;
   duration: number; // minutes
   // allDay: boolean,
   // participants: User[]
@@ -19,7 +19,7 @@ interface SetEventParams {
   id?: string;
   title: string;
   description: string;
-  date: string;
+  dateUtc: string;
   duration: string; // minutes
 }
 
@@ -27,14 +27,14 @@ const NOTIFICATION_OFFSET = 30;
 
 function getEventsByYearFilter(year: string) {
   return (event: CalendarEvent) => {
-    const parsedDate = new Date(event.date);
+    const parsedDate = new Date(event.dateUtc);
     return parsedDate.getFullYear().toString() === year;
   };
 }
 
 function getEventsByYearMonthFilter(year: string, month: string) {
   return (event: CalendarEvent) => {
-    const parsedDate = new Date(event.date);
+    const parsedDate = new Date(event.dateUtc);
     return (
       getEventsByYearFilter(year)(event) &&
       parsedDate.getMonth().toString() === month
@@ -48,7 +48,7 @@ function getEventsByYearMonthDayFilter(
   day: string
 ) {
   return (event: CalendarEvent) => {
-    const parsedDate = new Date(event.date);
+    const parsedDate = new Date(event.dateUtc);
     return (
       getEventsByYearMonthFilter(year, month)(event) &&
       parsedDate.getDate().toString() === day
@@ -99,6 +99,7 @@ const agent: Agent = {
       const events = await aspen.getAggregation("events", {
         range: "continuous",
       });
+      log(events, new Date(Object.values(events)[0].dateUtc));
       return Object.values(events).filter(
         getEventsByYearMonthFilter(year, month)
       );
@@ -113,10 +114,16 @@ const agent: Agent = {
   },
   actions: {
     setEvent: async (params: SetEventParams, aspen) => {
-      const { title, description, date, duration, id } = params;
-      const parsedDate = new Date(date);
+      const { title, description, dateUtc, duration, id } = params;
+      const parsedDate = new Date(dateUtc);
       const rid = id ?? (await aspen.createResource());
-      const event = { title, description, date: parsedDate, duration, id: rid };
+      const event = {
+        title,
+        description,
+        dateUtc: parsedDate,
+        duration,
+        id: rid,
+      };
       await aspen.pushEvent(
         Operations.SET_EVENT,
         { event },
