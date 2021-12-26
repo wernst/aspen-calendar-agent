@@ -99,7 +99,6 @@ const agent: Agent = {
       const events = await aspen.getAggregation("events", {
         range: "continuous",
       });
-      log(events, new Date(Object.values(events)[0].dateUtc));
       return Object.values(events).filter(
         getEventsByYearMonthFilter(year, month)
       );
