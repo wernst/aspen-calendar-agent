@@ -8,34 +8,11 @@ import {
   isBefore,
 } from "date-fns";
 import { rrulestr } from "rrule";
+import { CalendarEvent, SetEventParams } from "./types";
 
 enum Operations {
   SET_EVENT = "SET_EVENT",
   DELETE_EVENT = "DELETE_EVENT",
-}
-
-interface CalendarEvent {
-  id: string;
-  title: string;
-  description: string;
-  startDateUtc: string;
-  endDateUtc: string;
-  duration: number; // minutes
-  isRecurring: boolean;
-  recurrencePattern: string;
-  // allDay: boolean,
-  // participants: User[]
-}
-
-interface SetEventParams {
-  id?: string;
-  title: string;
-  description: string;
-  startDateUtc: string;
-  endDateUtc: string;
-  duration: string; // minutes
-  isRecurring: boolean;
-  recurrencePattern: string;
 }
 
 const NOTIFICATION_OFFSET = 30;
@@ -163,6 +140,15 @@ const agent: Agent = {
       return Object.values(events).filter(
         eventRangeFilter(startDateUtc, endDateUtc)
       );
+    },
+    eventById: async (params: { eventId: string }, aspen) => {
+      const { eventId } = params;
+      const events = (await aspen.getAggregation("events", {
+        range: "continuous",
+      })) as Record<string, CalendarEvent>;
+      const event = events[eventId];
+      if (!event) throw new Error("Event not found");
+      return event;
     },
   },
   actions: {
