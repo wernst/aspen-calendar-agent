@@ -6,6 +6,7 @@ import {
   addYears,
   isAfter,
   isBefore,
+  differenceInMinutes,
 } from "date-fns";
 import { rrulestr } from "rrule";
 import { CalendarEvent, SetEventParams } from "./types";
@@ -185,7 +186,7 @@ const agent: Agent = {
       const notifyDate = new Date(
         startDate.getTime() - NOTIFICATION_OFFSET * 60 * 1000
       );
-      aspen.scheduleAction("notify", event, notifyDate, {
+      aspen.scheduleAction("notifyUpcoming", event, notifyDate, {
         jobKey: `reminder_${rid}`,
       });
       return event;
@@ -197,8 +198,13 @@ const agent: Agent = {
       aspen.unscheduleAction(`reminder_${params.eventId}`);
       return params.eventId;
     },
-    notify: async (params, aspen) => {
-      log(`UPCOMING EVENT: ${JSON.stringify(params)}`);
+    notifyUpcoming: async (params: CalendarEvent, aspen) => {
+      aspen.notify(
+        `Your event ${params.title} is in ${differenceInMinutes(
+          new Date(),
+          new Date(params.startDateUtc)
+        )} minutes.`
+      );
       return "notified";
     },
   },
